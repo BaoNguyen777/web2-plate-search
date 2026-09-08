@@ -1,14 +1,25 @@
 # Web 2 — Plate Search
 
-Mobile-first Next.js app for searching license plates recognized by Web 1.
+Mobile-first Next.js app for looking up license plates from the CSV exported by Web 1.
 
 ## Current flow
 
-1. Enter a plate such as `43a12345`.
-2. The app normalizes separators, spaces and letter case.
-3. If the plate exists, it shows **Có biển số trong dữ liệu**.
-4. A reserved image area is shown for the future source image integration.
-5. If there is no match, it shows **Không có biển số**.
+1. Upload or drag/drop the Web 1 `.csv` file.
+2. The browser reads the CSV locally; no upload to a server is required.
+3. Enter a plate such as `43a12345`.
+4. The search normalizes uppercase/lowercase, spaces, `-`, `.`, and other separators.
+5. If a match exists, the app shows **Có biển số trong dữ liệu**, the plate, confidence, status, filename, and a reserved image area.
+6. If there is no match, it shows **Không có biển số**.
+
+## CSV format
+
+The expected Web 1 columns are:
+
+- `STT`
+- `Tên ảnh`
+- `Biển số`
+- `Độ tin cậy`
+- `Trạng thái`
 
 ## Run
 
@@ -17,4 +28,4 @@ npm install
 npm run dev
 ```
 
-The current seed records are intentionally temporary. The next step is to connect the Web 1 CSV/API so records and real images are loaded dynamically.
+The image area is intentionally prepared for the next step, when the actual source images are connected.
