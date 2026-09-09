@@ -9,11 +9,12 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete records older than 24 hours
+      - name: Delete records older than 24 hours via Web1
         env:
           CLEANUP_URL: ${{ secrets.CLEANUP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           test -n "$CLEANUP_URL"
+          test -n "$CRON_SECRET"
           curl --fail-with-body -X POST "$CLEANUP_URL/api/cleanup" \
             -H "Authorization: Bearer $CRON_SECRET"
