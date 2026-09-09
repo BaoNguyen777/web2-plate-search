@@ -4,6 +4,12 @@ import { getSupabaseConfig, storageSignUrl, supabaseHeaders } from "@/lib/supaba
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SELECT_FIELDS =
+  "id,plate,display_plate,image_name,image_path,confidence,status,created_at";
+
+type PlateRecord = Record<string, unknown>;
+
 function normalizePlate(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -31,7 +37,10 @@ async function getRequestedPlate(request: Request) {
         return body.plate ?? body.licensePlate ?? body.q ?? "";
       }
 
-      if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+      if (
+        contentType.includes("application/x-www-form-urlencoded") ||
+        contentType.includes("multipart/form-data")
+      ) {
         const form = await request.formData();
         return form.get("plate") ?? form.get("licensePlate") ?? form.get("q") ?? "";
       }
@@ -41,6 +50,45 @@ async function getRequestedPlate(request: Request) {
   }
 
   return "";
+}
+
+async function queryRecords(
+  url: string,
+  plate: string,
+  since: string
+): Promise<PlateRecord[]> {
+  const dbUrl = new URL(`${url}/rest/v1/plate_records`);
+  dbUrl.searchParams.set(
+    "select",
+    SELECT_FIELDS
+  );
+  dbUrl.searchParams.set(
+    "created_at",
+    `gte.${since}`
+  );
+  dbUrl.searchParams.set("order", "created_at.desc");
+  dbUrl.searchParams.set("limit", "100");
+
+  // Fetch only recent rows visible to the read-only key, then normalize on the
+  // server. This handles values such as 68H11024, 68H-110.24, and whitespace
+  // differences even if the database formatting is inconsistent.
+  const response = await fetch(dbUrl, {
+    headers: supabaseHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("[plate search] Supabase query failed", response.status, detail);
+    throw new Error(`Database HTTP ${response.status}`);
+  }
+
+  const records = (await response.json()) as PlateRecord[];
+  return records.filter((record) => {
+    const storedPlate = normalizePlate(record.plate);
+    const displayPlate = normalizePlate(record.display_plate);
+    return storedPlate === plate || displayPlate === plate;
+  });
 }
 
 export async function GET(request: Request) {
@@ -64,34 +112,8 @@ async function search(request: Request) {
       );
     }
 
-    const dbUrl = new URL(`${url}/rest/v1/plate_records`);
-    dbUrl.searchParams.set("plate", `eq.${plate}`);
-    dbUrl.searchParams.set(
-      "select",
-      "id,plate,display_plate,image_name,image_path,confidence,status,created_at"
-    );
-    dbUrl.searchParams.set(
-      "created_at",
-      `gte.${new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()}`
-    );
-    dbUrl.searchParams.set("order", "created_at.desc");
-    dbUrl.searchParams.set("limit", "20");
-
-    const response = await fetch(dbUrl, {
-      headers: supabaseHeaders(),
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      console.error("[plate search] Supabase query failed", response.status, detail);
-      return NextResponse.json(
-        { found: false, count: 0, records: [], error: `Database HTTP ${response.status}` },
-        { status: 502 }
-      );
-    }
-
-    const records = (await response.json()) as Array<Record<string, unknown>>;
+    const since = new Date(Date.now() - DAY_MS).toISOString();
+    const records = await queryRecords(url, plate, since);
 
     const signedRecords = await Promise.all(
       records.map(async (record) => {
@@ -114,7 +136,11 @@ async function search(request: Request) {
                 : `${url}/storage/v1${signed.signedURL}`;
             }
           } else {
-            console.error("[plate search] Supabase signed URL failed", signResponse.status, path);
+            console.error(
+              "[plate search] Supabase signed URL failed",
+              signResponse.status,
+              path
+            );
           }
         }
 
