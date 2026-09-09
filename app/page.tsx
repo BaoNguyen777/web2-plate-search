@@ -14,12 +14,26 @@ type RecordItem = {
 };
 
 function normalizePlate(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 }
 
 function formatTime(value: string) {
-  try { return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", second: "2-digit", day: "2-digit", month: "2-digit" }).format(new Date(value)); }
-  catch { return value; }
+  try {
+    return new Intl.DateTimeFormat("vi-VN", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 export default function Home() {
@@ -31,17 +45,44 @@ export default function Home() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+
     const plate = normalizePlate(query);
-    if (!plate) return;
-    setLoading(true); setSearched(true); setError(""); setRecords([]);
+    if (!plate) {
+      setSearched(true);
+      setRecords([]);
+      setError("Vui lòng nhập biển số xe.");
+      return;
+    }
+
+    setLoading(true);
+    setSearched(true);
+    setError("");
+    setRecords([]);
+
     try {
-      const response = await fetch(`/api/search?plate=${encodeURIComponent(plate)}`, { cache: "no-store" });
-      const data = await response.json() as { records?: RecordItem[]; error?: string };
-      if (!response.ok) throw new Error(data.error || "Không thể tra cứu.");
-      setRecords(data.records || []);
+      const response = await fetch(`/api/search?plate=${encodeURIComponent(plate)}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+
+      const data = (await response.json()) as {
+        found?: boolean;
+        count?: number;
+        records?: RecordItem[];
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Không thể tra cứu.");
+      }
+
+      setRecords(Array.isArray(data.records) ? data.records : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tra cứu.");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }
 
   const hasSearch = searched && Boolean(normalizePlate(query));
@@ -55,24 +96,61 @@ export default function Home() {
       </header>
 
       <section className="card">
-        <div className="sectionHeading"><div><p className="sectionEyebrow">01 · Tìm kiếm</p><h2>Nhập biển số</h2></div></div>
+        <div className="sectionHeading">
+          <div>
+            <p className="sectionEyebrow">01 · Tìm kiếm</p>
+            <h2>Nhập biển số</h2>
+          </div>
+        </div>
         <form onSubmit={submit}>
           <label className="label" htmlFor="plate">Biển số xe</label>
           <div className="searchRow">
-            <input id="plate" className="input" value={query} onChange={(event) => { setQuery(event.target.value); setSearched(false); setError(""); }} placeholder="43a12345" autoCapitalize="characters" autoComplete="off" inputMode="text" />
-            <button className="searchBtn" type="submit" aria-label="Tìm kiếm" disabled={loading}>{loading ? <LoaderCircle size={22} className="spin" /> : <Search size={22} />}</button>
+            <input
+              id="plate"
+              className="input"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSearched(false);
+                setError("");
+              }}
+              placeholder="43a12345"
+              autoCapitalize="characters"
+              autoComplete="off"
+              inputMode="text"
+            />
+            <button className="searchBtn" type="submit" aria-label="Tìm kiếm" disabled={loading}>
+              {loading ? <LoaderCircle size={22} className="spin" /> : <Search size={22} />}
+            </button>
           </div>
-          <p className="hint">Có thể nhập 43A12345, 43A-123.45 hoặc 43a 12345.</p>
+          <p className="hint">Có thể nhập 68H11024, 68H-110.24 hoặc 68h 11024.</p>
         </form>
       </section>
 
-      {hasSearch && loading && <section className="result empty"><div className="resultTop"><div className="icon"><LoaderCircle size={24} className="spin" /></div><div><h2>Đang tìm kiếm</h2><p>Đang kiểm tra dữ liệu trong 24 giờ gần nhất…</p></div></div></section>}
+      {hasSearch && loading && (
+        <section className="result empty">
+          <div className="resultTop">
+            <div className="icon"><LoaderCircle size={24} className="spin" /></div>
+            <div><h2>Đang tìm kiếm</h2><p>Đang kiểm tra dữ liệu trong 24 giờ gần nhất…</p></div>
+          </div>
+        </section>
+      )}
 
-      {hasSearch && !loading && error && <section className="result empty"><div className="resultTop"><div className="icon"><XCircle size={24} /></div><div><h2>Lỗi tra cứu</h2><p>{error}</p></div></div></section>}
+      {hasSearch && !loading && error && (
+        <section className="result empty">
+          <div className="resultTop">
+            <div className="icon"><XCircle size={24} /></div>
+            <div><h2>Lỗi tra cứu</h2><p>{error}</p></div>
+          </div>
+        </section>
+      )}
 
       {hasSearch && !loading && !error && records.length > 0 && (
         <section className="result success">
-          <div className="resultTop"><div className="icon"><CheckCircle2 size={24} /></div><div><h2>Có biển số trong dữ liệu</h2><p>Tìm thấy {records.length} ảnh phù hợp.</p></div></div>
+          <div className="resultTop">
+            <div className="icon"><CheckCircle2 size={24} /></div>
+            <div><h2>Có biển số trong dữ liệu</h2><p>Tìm thấy {records.length} ảnh phù hợp.</p></div>
+          </div>
           {records.map((result) => (
             <article className="matchCard" key={result.id}>
               <div className="plate">{result.plate}</div>
@@ -81,14 +159,25 @@ export default function Home() {
                 <div><span>Thời gian</span><strong>{formatTime(result.createdAt)}</strong></div>
                 <div><span>Trạng thái</span><strong>{result.status || "Đã nhận diện"}</strong></div>
               </div>
-              {result.imageUrl ? <img className="resultImage" src={result.imageUrl} alt={`Ảnh biển số ${result.plate}`} /> : <div className="imageSlot"><div><ImageIcon size={28} /><div>Không lấy được ảnh</div><small>{result.imageName}</small></div></div>}
+              {result.imageUrl ? (
+                <img className="resultImage" src={result.imageUrl} alt={`Ảnh biển số ${result.plate}`} />
+              ) : (
+                <div className="imageSlot">
+                  <div><ImageIcon size={28} /><div>Không lấy được ảnh</div><small>{result.imageName}</small></div>
+                </div>
+              )}
             </article>
           ))}
         </section>
       )}
 
       {hasSearch && !loading && !error && records.length === 0 && (
-        <section className="result empty"><div className="resultTop"><div className="icon"><XCircle size={24} /></div><div><h2>Không có biển số</h2><p>Không tìm thấy <strong>{query.toUpperCase()}</strong> trong dữ liệu 24 giờ gần nhất.</p></div></div></section>
+        <section className="result empty">
+          <div className="resultTop">
+            <div className="icon"><XCircle size={24} /></div>
+            <div><h2>Không có biển số</h2><p>Không tìm thấy <strong>{query.toUpperCase()}</strong> trong dữ liệu 24 giờ gần nhất.</p></div>
+          </div>
+        </section>
       )}
 
       <p className="footerNote">Ảnh được lưu tạm thời và chỉ phục vụ tra cứu trong ngày.</p>
