@@ -1,17 +1,28 @@
 const DEFAULT_BUCKET = "plate-images";
 
-export function getSupabaseConfig() {
+export type SupabaseConfig = {
+  url: string;
+  serviceRoleKey: string;
+  bucket: string;
+};
+
+export function readSupabaseConfig(): SupabaseConfig | null {
   const url = process.env.SUPABASE_URL?.trim().replace(/\/$/, "");
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const bucket = process.env.SUPABASE_STORAGE_BUCKET?.trim() || DEFAULT_BUCKET;
 
-  if (!url || !serviceRoleKey) {
+  if (!url || !serviceRoleKey) return null;
+  return { url, serviceRoleKey, bucket };
+}
+
+export function getSupabaseConfig(): SupabaseConfig {
+  const config = readSupabaseConfig();
+  if (!config) {
     throw new Error(
       "Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in the deployment environment."
     );
   }
-
-  return { url, serviceRoleKey, bucket };
+  return config;
 }
 
 export function supabaseHeaders(contentType?: string): HeadersInit {
