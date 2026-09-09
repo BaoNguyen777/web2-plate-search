@@ -4,23 +4,62 @@ import { getSupabaseConfig, storageSignUrl, supabaseHeaders } from "@/lib/supaba
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function normalizePlate(value: string) {
-  return value
+function normalizePlate(value: unknown) {
+  return String(value ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
 }
 
+async function getRequestedPlate(request: Request) {
+  const url = new URL(request.url);
+  const queryPlate =
+    url.searchParams.get("plate") ||
+    url.searchParams.get("licensePlate") ||
+    url.searchParams.get("q") ||
+    "";
+
+  if (queryPlate.trim()) return queryPlate;
+
+  if (request.method === "POST") {
+    const contentType = request.headers.get("content-type") || "";
+
+    try {
+      if (contentType.includes("application/json")) {
+        const body = (await request.json()) as Record<string, unknown>;
+        return body.plate ?? body.licensePlate ?? body.q ?? "";
+      }
+
+      if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
+        const form = await request.formData();
+        return form.get("plate") ?? form.get("licensePlate") ?? form.get("q") ?? "";
+      }
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+}
+
 export async function GET(request: Request) {
+  return search(request);
+}
+
+export async function POST(request: Request) {
+  return search(request);
+}
+
+async function search(request: Request) {
   try {
     const { url, bucket } = getSupabaseConfig();
-    const query = new URL(request.url).searchParams.get("plate") || "";
-    const plate = normalizePlate(query);
+    const rawPlate = await getRequestedPlate(request);
+    const plate = normalizePlate(rawPlate);
 
     if (!plate) {
       return NextResponse.json(
-        { found: false, records: [], error: "Thiếu biển số." },
+        { found: false, count: 0, records: [], error: "Thiếu biển số." },
         { status: 400 }
       );
     }
@@ -47,7 +86,7 @@ export async function GET(request: Request) {
       const detail = await response.text().catch(() => "");
       console.error("[plate search] Supabase query failed", response.status, detail);
       return NextResponse.json(
-        { found: false, records: [], error: `Database HTTP ${response.status}` },
+        { found: false, count: 0, records: [], error: `Database HTTP ${response.status}` },
         { status: 502 }
       );
     }
@@ -75,11 +114,7 @@ export async function GET(request: Request) {
                 : `${url}/storage/v1${signed.signedURL}`;
             }
           } else {
-            console.error(
-              "[plate search] Supabase signed URL failed",
-              signResponse.status,
-              path
-            );
+            console.error("[plate search] Supabase signed URL failed", signResponse.status, path);
           }
         }
 
@@ -105,6 +140,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         found: false,
+        count: 0,
         records: [],
         error: error instanceof Error ? error.message : "Không thể tra cứu.",
       },
